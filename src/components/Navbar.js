@@ -30,9 +30,9 @@ const Navbar = () => {
           <a href="/#projects" className="navbar__link">Projects</a>
           <a href="/#about" className="navbar__link">About</a>
           <a href="/#contact" className="navbar__link">Contact</a>
-          <Link to="/admin" className="navbar__admin-btn">
+          {/* <Link to="/admin" className="navbar__admin-btn">
             <span>Admin</span>
-          </Link>
+          </Link> */}
         </div>
 
         <button
