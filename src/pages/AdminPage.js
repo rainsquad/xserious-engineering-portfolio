@@ -12,16 +12,32 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
+/* Detect aspect ratio class for an image src */
+const getImageOrientation = (src) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const ratio = img.naturalWidth / img.naturalHeight;
+      if (ratio > 1.4) resolve('landscape');
+      else if (ratio < 0.75) resolve('portrait');
+      else resolve('square');
+    };
+    img.onerror = () => resolve('square');
+    img.src = src;
+  });
+
 /* ── EMPTY FORM ────────────────────────────────────────── */
 const emptyForm = {
   title: '',
   category: 'generator',
+  customCategory: '',
+  useCustomCategory: false,
   tags: '',
   description: '',
   details: '',
   featured: false,
   price: '',
-  image: null,
+  images: [], // array of { src, orientation }
 };
 
 /* ── PROJECT ROW ─────────────────────────────────────────── */
@@ -34,19 +50,23 @@ const ProjectRow = ({ project, onEdit, onDelete }) => {
     panels: '#43a047',
   };
   const color = catColors[project.category] || '#888';
+  const firstImage = project.images?.[0]?.src || project.image || null;
 
   return (
     <div className="admin-row">
       <div className="admin-row__img">
-        {project.image
-          ? <img src={project.image} alt={project.title} />
+        {firstImage
+          ? <img src={firstImage} alt={project.title} />
           : <span>🔩</span>
         }
+        {project.images?.length > 1 && (
+          <div className="admin-row__img-count">+{project.images.length - 1}</div>
+        )}
       </div>
       <div className="admin-row__info">
         <div className="admin-row__title">{project.title}</div>
         <div className="admin-row__meta">
-          <span className="admin-row__cat" style={{ color }}>{project.category.toUpperCase()}</span>
+          <span className="admin-row__cat" style={{ color }}>{(project.customCategory || project.category).toUpperCase()}</span>
           <span className="admin-row__date">{project.date}</span>
           {project.featured && <span className="admin-row__featured">FEATURED</span>}
           {project.price && <span className="admin-row__price">{project.price}</span>}
@@ -84,8 +104,21 @@ const ProjectRow = ({ project, onEdit, onDelete }) => {
           font-size: 28px;
           flex-shrink: 0;
           overflow: hidden;
+          position: relative;
         }
         .admin-row__img img { width: 100%; height: 100%; object-fit: cover; }
+        .admin-row__img-count {
+          position: absolute;
+          bottom: 2px; right: 2px;
+          background: var(--accent);
+          color: #000;
+          font-family: var(--font-mono);
+          font-size: 9px;
+          font-weight: 700;
+          padding: 1px 4px;
+          border-radius: 2px;
+          line-height: 1.4;
+        }
         .admin-row__info { flex: 1; min-width: 0; }
         .admin-row__title {
           font-family: var(--font-display);
@@ -124,21 +157,113 @@ const ProjectRow = ({ project, onEdit, onDelete }) => {
   );
 };
 
+/* ── IMAGE THUMBNAIL ─────────────────────────────────────── */
+const ImageThumb = ({ img, index, onRemove, onMoveLeft, onMoveRight, isFirst, isLast }) => (
+  <div className={`img-thumb img-thumb--${img.orientation}`}>
+    <img src={img.src} alt={`upload-${index}`} />
+    {isFirst && <div className="img-thumb__badge">COVER</div>}
+    <div className="img-thumb__overlay">
+      <div className="img-thumb__actions">
+        {!isFirst && (
+          <button type="button" className="img-thumb__btn" onClick={() => onMoveLeft(index)} title="Move left">←</button>
+        )}
+        {!isLast && (
+          <button type="button" className="img-thumb__btn" onClick={() => onMoveRight(index)} title="Move right">→</button>
+        )}
+        <button type="button" className="img-thumb__btn img-thumb__btn--del" onClick={() => onRemove(index)} title="Remove">✕</button>
+      </div>
+    </div>
+    <style>{`
+      .img-thumb {
+        position: relative;
+        border-radius: 3px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: var(--bg-panel);
+        flex-shrink: 0;
+        cursor: default;
+      }
+      .img-thumb--landscape { width: 180px; height: 110px; }
+      .img-thumb--portrait  { width: 90px;  height: 140px; }
+      .img-thumb--square    { width: 120px; height: 120px; }
+      .img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .img-thumb__badge {
+        position: absolute;
+        top: 4px; left: 4px;
+        background: var(--accent);
+        color: #000;
+        font-family: var(--font-mono);
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        padding: 2px 5px;
+        border-radius: 2px;
+      }
+      .img-thumb__overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.18s;
+      }
+      .img-thumb:hover .img-thumb__overlay { opacity: 1; }
+      .img-thumb__actions { display: flex; gap: 6px; }
+      .img-thumb__btn {
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.3);
+        color: #fff;
+        width: 28px; height: 28px;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 13px;
+        display: flex; align-items: center; justify-content: center;
+        transition: background 0.15s;
+      }
+      .img-thumb__btn:hover { background: rgba(255,255,255,0.3); }
+      .img-thumb__btn--del { background: rgba(220,50,50,0.4); border-color: rgba(220,50,50,0.6); }
+      .img-thumb__btn--del:hover { background: rgba(220,50,50,0.7); }
+    `}</style>
+  </div>
+);
+
 /* ── PROJECT FORM ────────────────────────────────────────── */
 const ProjectForm = ({ initial, onSave, onCancel }) => {
   const [form, setForm] = useState(initial || emptyForm);
-  const [preview, setPreview] = useState(initial?.image || null);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef();
 
   const set = (field, val) => setForm(f => ({ ...f, [field]: val }));
 
-  const handleImage = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const b64 = await fileToBase64(file);
-    setPreview(b64);
-    set('image', b64);
+  const handleImages = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const newImgs = await Promise.all(
+      files.map(async (file) => {
+        const src = await fileToBase64(file);
+        const orientation = await getImageOrientation(src);
+        return { src, orientation };
+      })
+    );
+    setForm(f => ({ ...f, images: [...(f.images || []), ...newImgs] }));
+    // reset input so same file can be re-added
+    e.target.value = '';
+  };
+
+  const removeImage = (idx) => {
+    setForm(f => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
+  };
+
+  const moveImage = (idx, dir) => {
+    setForm(f => {
+      const imgs = [...f.images];
+      const target = idx + dir;
+      if (target < 0 || target >= imgs.length) return f;
+      [imgs[idx], imgs[target]] = [imgs[target], imgs[idx]];
+      return { ...f, images: imgs };
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -148,15 +273,29 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
       ...form,
       tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       details: form.details ? form.details.split('\n').map(d => d.trim()).filter(Boolean) : [],
+      // keep backward-compat: expose first image as `image`
+      image: form.images?.[0]?.src || null,
+      category: form.useCustomCategory && form.customCategory.trim()
+        ? form.customCategory.trim().toLowerCase().replace(/\s+/g, '_')
+        : form.category,
+      customCategory: form.useCustomCategory && form.customCategory.trim()
+        ? form.customCategory.trim()
+        : '',
     };
     await new Promise(r => setTimeout(r, 300));
     onSave(payload);
     setSaving(false);
   };
 
+  const effectiveCategory = form.useCustomCategory && form.customCategory.trim()
+    ? form.customCategory
+    : categoryOptions.find(c => c.id === form.category)?.label || form.category;
+
   return (
     <form onSubmit={handleSubmit} className="proj-form">
       <div className="proj-form__grid">
+
+        {/* Title */}
         <div className="proj-form__field proj-form__field--full">
           <label className="proj-form__label">PROJECT TITLE *</label>
           <input
@@ -168,15 +307,44 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           />
         </div>
 
-        <div className="proj-form__field">
+        {/* Category */}
+        <div className="proj-form__field proj-form__field--full">
           <label className="proj-form__label">CATEGORY *</label>
-          <select className="proj-form__input" value={form.category} onChange={e => set('category', e.target.value)}>
-            {categoryOptions.map(c => (
-              <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-          </select>
+          <div className="proj-form__cat-row">
+            <div className="proj-form__cat-toggle">
+              <button
+                type="button"
+                className={`proj-form__cat-tab${!form.useCustomCategory ? ' active' : ''}`}
+                onClick={() => set('useCustomCategory', false)}
+              >Preset</button>
+              <button
+                type="button"
+                className={`proj-form__cat-tab${form.useCustomCategory ? ' active' : ''}`}
+                onClick={() => set('useCustomCategory', true)}
+              >Custom</button>
+            </div>
+            {!form.useCustomCategory ? (
+              <select className="proj-form__input proj-form__input--flex" value={form.category} onChange={e => set('category', e.target.value)}>
+                {categoryOptions.map(c => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className="proj-form__input proj-form__input--flex"
+                value={form.customCategory}
+                onChange={e => set('customCategory', e.target.value)}
+                placeholder="e.g. HVAC Systems, Solar Installation…"
+                required={form.useCustomCategory}
+              />
+            )}
+          </div>
+          <div className="proj-form__cat-preview">
+            Category will display as: <strong>{effectiveCategory || '—'}</strong>
+          </div>
         </div>
 
+        {/* Price */}
         <div className="proj-form__field">
           <label className="proj-form__label">PRICE / VALUE (optional)</label>
           <input
@@ -187,7 +355,8 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           />
         </div>
 
-        <div className="proj-form__field proj-form__field--full">
+        {/* Tags */}
+        <div className="proj-form__field">
           <label className="proj-form__label">TAGS (comma-separated)</label>
           <input
             className="proj-form__input"
@@ -197,6 +366,7 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           />
         </div>
 
+        {/* Description */}
         <div className="proj-form__field proj-form__field--full">
           <label className="proj-form__label">DESCRIPTION *</label>
           <textarea
@@ -209,6 +379,7 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           />
         </div>
 
+        {/* Work Details */}
         <div className="proj-form__field proj-form__field--full">
           <label className="proj-form__label">WORK DETAILS (one per line)</label>
           <textarea
@@ -220,28 +391,50 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           />
         </div>
 
+        {/* Multi-image upload */}
         <div className="proj-form__field proj-form__field--full">
-          <label className="proj-form__label">PROJECT IMAGE</label>
+          <label className="proj-form__label">
+            PROJECT IMAGES
+            <span className="proj-form__label-hint"> — first image is the cover. Drag to reorder using ← → buttons.</span>
+          </label>
+
+          {/* Existing thumbnails */}
+          {form.images?.length > 0 && (
+            <div className="proj-form__thumbs">
+              {form.images.map((img, i) => (
+                <ImageThumb
+                  key={i}
+                  img={img}
+                  index={i}
+                  isFirst={i === 0}
+                  isLast={i === form.images.length - 1}
+                  onRemove={removeImage}
+                  onMoveLeft={(idx) => moveImage(idx, -1)}
+                  onMoveRight={(idx) => moveImage(idx, 1)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Upload zone */}
           <div
             className="proj-form__upload"
             onClick={() => fileRef.current.click()}
           >
-            {preview ? (
-              <div className="proj-form__preview-wrap">
-                <img src={preview} alt="Preview" className="proj-form__preview" />
-                <div className="proj-form__preview-overlay">Click to change</div>
-              </div>
-            ) : (
-              <div className="proj-form__upload-placeholder">
-                <span className="proj-form__upload-icon">📷</span>
-                <span className="proj-form__upload-text">Click to upload image</span>
-                <span className="proj-form__upload-hint">JPG, PNG, WEBP up to 5MB</span>
-              </div>
-            )}
+            <div className="proj-form__upload-placeholder">
+              <span className="proj-form__upload-icon">📷</span>
+              <span className="proj-form__upload-text">
+                {form.images?.length > 0 ? 'Add more images' : 'Click to upload images'}
+              </span>
+              <span className="proj-form__upload-hint">
+                JPG, PNG, WEBP — multiple files supported — portrait, landscape &amp; square handled automatically
+              </span>
+            </div>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImage} />
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImages} />
         </div>
 
+        {/* Featured */}
         <div className="proj-form__field">
           <label className="proj-form__check-label">
             <input
@@ -278,6 +471,13 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           color: var(--text-dim);
           letter-spacing: 0.15em;
         }
+        .proj-form__label-hint {
+          font-size: 9px;
+          color: var(--text-dim);
+          letter-spacing: 0.05em;
+          font-weight: 400;
+          opacity: 0.7;
+        }
         .proj-form__input {
           background: var(--bg);
           border: 1px solid var(--border);
@@ -289,17 +489,69 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           outline: none;
           width: 100%;
           font-family: var(--font-body);
+          box-sizing: border-box;
         }
         .proj-form__input:focus { border-color: var(--accent); }
+        .proj-form__input--flex { flex: 1; width: auto; }
         select.proj-form__input option { background: var(--bg-card); }
         .proj-form__textarea { resize: vertical; min-height: 80px; }
+
+        /* Category row */
+        .proj-form__cat-row { display: flex; gap: 10px; align-items: stretch; }
+        .proj-form__cat-toggle {
+          display: flex;
+          border: 1px solid var(--border);
+          border-radius: 2px;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+        .proj-form__cat-tab {
+          background: var(--bg);
+          border: none;
+          color: var(--text-dim);
+          font-family: var(--font-mono);
+          font-size: 10px;
+          letter-spacing: 0.1em;
+          padding: 0 12px;
+          cursor: pointer;
+          transition: all 0.15s;
+          white-space: nowrap;
+        }
+        .proj-form__cat-tab.active {
+          background: var(--accent);
+          color: #000;
+          font-weight: 700;
+        }
+        .proj-form__cat-preview {
+          font-family: var(--font-mono);
+          font-size: 10px;
+          color: var(--text-dim);
+          padding: 4px 0;
+          letter-spacing: 0.05em;
+        }
+        .proj-form__cat-preview strong { color: var(--accent); }
+
+        /* Thumbnails strip */
+        .proj-form__thumbs {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          padding: 12px;
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 3px;
+          margin-bottom: 8px;
+          align-items: flex-end;
+        }
+
+        /* Upload zone */
         .proj-form__upload {
           border: 2px dashed var(--border-accent);
           border-radius: 4px;
           cursor: pointer;
           transition: border-color 0.2s;
           overflow: hidden;
-          min-height: 140px;
+          min-height: 90px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -309,13 +561,13 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 8px;
-          padding: 32px;
+          gap: 6px;
+          padding: 24px;
         }
-        .proj-form__upload-icon { font-size: 36px; }
+        .proj-form__upload-icon { font-size: 28px; }
         .proj-form__upload-text {
           font-family: var(--font-display);
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 600;
           color: var(--text-muted);
           letter-spacing: 0.08em;
@@ -324,30 +576,9 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           font-family: var(--font-mono);
           font-size: 10px;
           color: var(--text-dim);
+          text-align: center;
         }
-        .proj-form__preview-wrap {
-          position: relative;
-          width: 100%;
-          max-height: 240px;
-          overflow: hidden;
-        }
-        .proj-form__preview { width: 100%; object-fit: cover; }
-        .proj-form__preview-overlay {
-          position: absolute;
-          inset: 0;
-          background: rgba(0,0,0,0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: var(--font-display);
-          font-size: 14px;
-          font-weight: 600;
-          letter-spacing: 0.1em;
-          color: white;
-          opacity: 0;
-          transition: opacity 0.2s;
-        }
-        .proj-form__upload:hover .proj-form__preview-overlay { opacity: 1; }
+
         .proj-form__check-label {
           display: flex;
           align-items: center;
@@ -356,10 +587,7 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
           padding-top: 8px;
         }
         .proj-form__check { accent-color: var(--accent); width: 16px; height: 16px; }
-        .proj-form__check-text {
-          font-size: 14px;
-          color: var(--text-muted);
-        }
+        .proj-form__check-text { font-size: 14px; color: var(--text-muted); }
         .proj-form__actions {
           display: flex;
           gap: 12px;
@@ -369,6 +597,7 @@ const ProjectForm = ({ initial, onSave, onCancel }) => {
         }
         @media (max-width: 640px) {
           .proj-form__grid { grid-template-columns: 1fr; }
+          .proj-form__cat-row { flex-direction: column; }
         }
       `}</style>
     </form>
@@ -412,6 +641,12 @@ const AdminPage = () => {
       ...project,
       tags: (project.tags || []).join(', '),
       details: (project.details || []).join('\n'),
+      // normalise images array — support old single `image` field
+      images: project.images?.length
+        ? project.images
+        : project.image
+          ? [{ src: project.image, orientation: 'landscape' }]
+          : [],
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -424,6 +659,16 @@ const AdminPage = () => {
     showToast('Project deleted.', 'error');
   };
 
+  // build a unified category list that includes custom categories from existing projects
+  const allCategories = [
+    { id: 'all', label: 'All Categories' },
+    ...categoryOptions,
+    ...projects
+      .filter(p => p.customCategory)
+      .map(p => ({ id: p.category, label: p.customCategory }))
+      .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i),
+  ];
+
   const filtered = projects.filter(p => {
     const matchCat = filterCat === 'all' || p.category === filterCat;
     const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.description?.toLowerCase().includes(search.toLowerCase());
@@ -432,7 +677,6 @@ const AdminPage = () => {
 
   return (
     <div className="admin">
-      {/* Toast */}
       {toast && (
         <div className={`admin__toast admin__toast--${toast.type}`}>
           {toast.msg}
@@ -467,13 +711,13 @@ const AdminPage = () => {
             <div className="admin__stat-label">Featured</div>
           </div>
           <div className="admin__stat-card">
-            <div className="admin__stat-val">{projects.filter(p => p.image).length}</div>
+            <div className="admin__stat-val">{projects.filter(p => p.images?.length || p.image).length}</div>
             <div className="admin__stat-label">With Images</div>
           </div>
 
           <div className="admin__cat-breakdown">
             <div className="admin__cat-title">BY CATEGORY</div>
-            {categories.filter(c => c.id !== 'all').map(cat => {
+            {allCategories.filter(c => c.id !== 'all').map(cat => {
               const count = projects.filter(p => p.category === cat.id).length;
               return (
                 <div key={cat.id} className="admin__cat-row">
@@ -487,7 +731,6 @@ const AdminPage = () => {
 
         {/* Main content */}
         <main className="admin__main">
-          {/* Add / Edit Form */}
           {showForm ? (
             <div className="admin__form-card">
               <div className="admin__form-header">
@@ -519,7 +762,7 @@ const AdminPage = () => {
                   value={filterCat}
                   onChange={e => setFilterCat(e.target.value)}
                 >
-                  {categories.map(c => (
+                  {allCategories.map(c => (
                     <option key={c.id} value={c.id}>{c.label}</option>
                   ))}
                 </select>
@@ -530,7 +773,6 @@ const AdminPage = () => {
             </div>
           )}
 
-          {/* Project list */}
           {!showForm && (
             <div className="admin__list">
               <div className="admin__list-header">
@@ -554,231 +796,50 @@ const AdminPage = () => {
       </div>
 
       <style>{`
-        .admin {
-          min-height: 100vh;
-          background: var(--bg);
-          padding-top: 0;
-        }
+        .admin { min-height: 100vh; background: var(--bg); padding-top: 0; }
         .admin__toast {
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          z-index: 9000;
-          padding: 12px 20px;
-          border-radius: 4px;
-          font-family: var(--font-mono);
-          font-size: 13px;
-          letter-spacing: 0.08em;
+          position: fixed; top: 20px; right: 20px; z-index: 9000;
+          padding: 12px 20px; border-radius: 4px;
+          font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.08em;
           animation: fadeUp 0.3s ease;
         }
-        .admin__toast--success {
-          background: rgba(67, 160, 71, 0.15);
-          border: 1px solid rgba(67, 160, 71, 0.4);
-          color: var(--green);
-        }
-        .admin__toast--error {
-          background: rgba(229, 57, 53, 0.1);
-          border: 1px solid rgba(229, 57, 53, 0.3);
-          color: var(--red);
-        }
-        .admin__topbar {
-          background: var(--bg-panel);
-          border-bottom: 1px solid var(--border);
-          padding: 0 24px;
-          position: sticky;
-          top: 0;
-          z-index: 100;
-        }
-        .admin__topbar-inner {
-          max-width: 1400px;
-          margin: 0 auto;
-          height: 64px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        .admin__topbar-logo {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .admin__topbar-x {
-          font-family: var(--font-display);
-          font-size: 36px;
-          font-weight: 900;
-          color: var(--accent);
-          line-height: 1;
-          letter-spacing: -2px;
-        }
-        .admin__topbar-main {
-          font-family: var(--font-display);
-          font-size: 14px;
-          font-weight: 700;
-          letter-spacing: 0.15em;
-          color: var(--text);
-          line-height: 1;
-        }
-        .admin__topbar-sub {
-          font-family: var(--font-mono);
-          font-size: 9px;
-          color: var(--accent);
-          letter-spacing: 0.2em;
-        }
-        .admin__body {
-          max-width: 1400px;
-          margin: 0 auto;
-          padding: 32px 24px;
-          display: grid;
-          grid-template-columns: 220px 1fr;
-          gap: 32px;
-        }
+        .admin__toast--success { background: rgba(67,160,71,0.15); border: 1px solid rgba(67,160,71,0.4); color: var(--green); }
+        .admin__toast--error   { background: rgba(229,57,53,0.1);  border: 1px solid rgba(229,57,53,0.3);  color: var(--red); }
+        .admin__topbar { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 0 24px; position: sticky; top: 0; z-index: 100; }
+        .admin__topbar-inner { max-width: 1400px; margin: 0 auto; height: 64px; display: flex; align-items: center; justify-content: space-between; }
+        .admin__topbar-logo { display: flex; align-items: center; gap: 10px; }
+        .admin__topbar-x { font-family: var(--font-display); font-size: 36px; font-weight: 900; color: var(--accent); line-height: 1; letter-spacing: -2px; }
+        .admin__topbar-main { font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: 0.15em; color: var(--text); line-height: 1; }
+        .admin__topbar-sub  { font-family: var(--font-mono); font-size: 9px; color: var(--accent); letter-spacing: 0.2em; }
+        .admin__body { max-width: 1400px; margin: 0 auto; padding: 32px 24px; display: grid; grid-template-columns: 220px 1fr; gap: 32px; }
         .admin__sidebar { display: flex; flex-direction: column; gap: 12px; }
-        .admin__stat-card {
-          background: var(--bg-panel);
-          border: 1px solid var(--border);
-          border-radius: 4px;
-          padding: 16px;
-          text-align: center;
-        }
-        .admin__stat-val {
-          font-family: var(--font-display);
-          font-size: 40px;
-          font-weight: 900;
-          color: var(--accent);
-          line-height: 1;
-        }
-        .admin__stat-label {
-          font-family: var(--font-mono);
-          font-size: 10px;
-          color: var(--text-dim);
-          letter-spacing: 0.15em;
-          margin-top: 4px;
-        }
-        .admin__cat-breakdown {
-          background: var(--bg-panel);
-          border: 1px solid var(--border);
-          border-radius: 4px;
-          padding: 16px;
-          margin-top: 8px;
-        }
-        .admin__cat-title {
-          font-family: var(--font-mono);
-          font-size: 10px;
-          color: var(--text-dim);
-          letter-spacing: 0.15em;
-          margin-bottom: 12px;
-        }
-        .admin__cat-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 7px 0;
-          border-bottom: 1px solid var(--border);
-          font-size: 12px;
-        }
+        .admin__stat-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; padding: 16px; text-align: center; }
+        .admin__stat-val  { font-family: var(--font-display); font-size: 40px; font-weight: 900; color: var(--accent); line-height: 1; }
+        .admin__stat-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; margin-top: 4px; }
+        .admin__cat-breakdown { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; padding: 16px; margin-top: 8px; }
+        .admin__cat-title { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; margin-bottom: 12px; }
+        .admin__cat-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
         .admin__cat-row:last-child { border-bottom: none; }
         .admin__cat-label { color: var(--text-muted); }
-        .admin__cat-count {
-          font-family: var(--font-mono);
-          font-size: 12px;
-          color: var(--accent);
-          font-weight: 600;
-        }
+        .admin__cat-count { font-family: var(--font-mono); font-size: 12px; color: var(--accent); font-weight: 600; }
         .admin__main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-        .admin__form-card {
-          background: var(--bg-panel);
-          border: 1px solid var(--border);
-          border-radius: 4px;
-          overflow: hidden;
-        }
-        .admin__form-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 16px 24px;
-          border-bottom: 1px solid var(--border);
-          background: var(--bg-card);
-        }
-        .admin__form-title {
-          font-family: var(--font-display);
-          font-size: 14px;
-          font-weight: 700;
-          letter-spacing: 0.2em;
-          color: var(--accent);
-        }
-        .admin__form-close {
-          background: none;
-          border: none;
-          color: var(--text-dim);
-          font-size: 18px;
-          cursor: pointer;
-          padding: 4px 8px;
-          border-radius: 2px;
-          transition: all 0.2s;
-        }
+        .admin__form-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+        .admin__form-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--bg-card); }
+        .admin__form-title { font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: 0.2em; color: var(--accent); }
+        .admin__form-close { background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 2px; transition: all 0.2s; }
         .admin__form-close:hover { color: var(--text); background: var(--bg-card-hover); }
-        .admin__actions-bar {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-          flex-wrap: wrap;
-        }
-        .admin__search-wrap {
-          flex: 1;
-          min-width: 200px;
-          position: relative;
-        }
-        .admin__search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          font-size: 14px;
-        }
-        .admin__search {
-          width: 100%;
-          background: var(--bg-panel);
-          border: 1px solid var(--border);
-          border-radius: 2px;
-          padding: 9px 14px 9px 36px;
-          color: var(--text);
-          font-size: 14px;
-          outline: none;
-          transition: border-color 0.2s;
-          font-family: var(--font-body);
-        }
+        .admin__actions-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .admin__search-wrap { flex: 1; min-width: 200px; position: relative; }
+        .admin__search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; }
+        .admin__search { width: 100%; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 2px; padding: 9px 14px 9px 36px; color: var(--text); font-size: 14px; outline: none; transition: border-color 0.2s; font-family: var(--font-body); }
         .admin__search:focus { border-color: var(--accent); }
-        .admin__filter-sel {
-          background: var(--bg-panel);
-          border: 1px solid var(--border);
-          border-radius: 2px;
-          padding: 9px 14px;
-          color: var(--text);
-          font-size: 14px;
-          outline: none;
-          font-family: var(--font-body);
-          cursor: pointer;
-        }
+        .admin__filter-sel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 2px; padding: 9px 14px; color: var(--text); font-size: 14px; outline: none; font-family: var(--font-body); cursor: pointer; }
         .admin__filter-sel option { background: var(--bg-card); }
         .admin__list { display: flex; flex-direction: column; gap: 12px; }
-        .admin__list-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        .admin__list-count {
-          font-family: var(--font-mono);
-          font-size: 11px;
-          color: var(--text-dim);
-          letter-spacing: 0.12em;
-        }
+        .admin__list-header { display: flex; align-items: center; justify-content: space-between; }
+        .admin__list-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.12em; }
         .admin__rows { display: flex; flex-direction: column; gap: 10px; }
-        .admin__empty {
-          text-align: center;
-          padding: 60px 0;
-          color: var(--text-dim);
-          font-size: 14px;
-        }
+        .admin__empty { text-align: center; padding: 60px 0; color: var(--text-dim); font-size: 14px; }
         @media (max-width: 768px) {
           .admin__body { grid-template-columns: 1fr; }
           .admin__sidebar { flex-direction: row; flex-wrap: wrap; }
